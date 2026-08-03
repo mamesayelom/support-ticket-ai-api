@@ -3,7 +3,7 @@ from transformers import pipeline
 import torch
 from PIL import Image, UnidentifiedImageError
 import io
-from app.core.config import VIT_MODEL_NAME
+from app.core.config import VIT_MODEL_NAME, MAX_CONFIDENCE, MIN_CONFIDENCE
 
 
 @lru_cache(maxsize=1)
@@ -13,7 +13,7 @@ def get_vision_pipeline():
     """
     device = 0 if torch.cuda.is_available() else -1
     vision = pipeline(
-        "image-classification",
+        "zero-shot-image-classification",
         model=VIT_MODEL_NAME,
         device=device,
     )
@@ -39,10 +39,44 @@ def analyze_image(image_bytes: bytes) -> dict:
     except UnidentifiedImageError:
         raise ValueError("Le fichier fourni n'est pas une image valide.")
 
-    predictions = vision_pipeline(image)
-    top_prediction = predictions[0]  # le pipeline retourne les résultats triés par score décroissant
+    # Classes métier données au modèle
+    candidate_labels = [
+        "a good quality product",
+        "a damaged broken or defective product"
+    ]
+
+    # Analyse zero-shot
+    predictions = vision_pipeline(
+        image,
+        candidate_labels=candidate_labels
+    )
+    # # Premier résultat = classe avec le meilleur score
+    top_prediction = predictions[0]  
+
+    label = top_prediction["label"]
+    confidence = top_prediction["score"]
+
+
+    # Conversion en statut métier
+    if (
+    label == "a good quality product"
+    and confidence >= MAX_CONFIDENCE
+    ):
+        status = "conforme"
+
+    elif (
+        label == "a damaged broken or defective product"
+        and confidence >= MAX_CONFIDENCE
+    ):
+        status = "defaut"
+
+    else:
+        status = "a_verifier"
+
+
 
     return {
-        "label": top_prediction["label"],
-        "confidence": round(top_prediction["score"], 3),
+        "status": status,
+        "label": label,
+        "confidence": round(confidence, 3)
     }

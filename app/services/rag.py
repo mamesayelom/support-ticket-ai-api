@@ -28,9 +28,6 @@ from langchain_community.vectorstores import Chroma
 # KNOWLEDGE_BASE_DIR: variable représentant le chemin vers le dossier qui contient les documents de connaissance de ton RAG.
 from app.core.config import KNOWLEDGE_BASE_DIR, EMBEDDING_MODEL_NAME
 
-# module Python qui permet d'utiliser les expressions régulières (regex)
-import re
-from langchain_core.documents import Document
 
 @lru_cache(maxsize=1)
 def get_retriever():
@@ -41,67 +38,21 @@ def get_retriever():
 
     # construire le chemin complet vers ton fichier PDF
     pdf_path = os.path.join(KNOWLEDGE_BASE_DIR, "cgv_faq.pdf")
-    # loader est un objet qui sait lire un PDF
+    # Charger le fichier PDF
     loader = PyPDFLoader(pdf_path)
-    # lit le PDF et retourne une liste de Document
-    pages = loader.load()
 
-    # Fusionne le texte de toutes les pages du PDF en une seule chaîne,
-    # en séparant chaque page par un retour à la ligne. 
-    full_text = "\n".join(
-        page.page_content for page in pages
+    # objet capable de découper du texte
+    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        # tokenizer (transforme un texte en tokens) utiliser
+        encoding_name="cl100k_base",
+        # la taille maximale d'un morceau
+        chunk_size=300,
+        # combien de tokens doivent être répétés entre deux morceaux
+        chunk_overlap=20,
     )
 
-    # Découpe le texte complet en sections (articles et questions de la FAQ)
-    def split_articles(text):
-        """
-        sections = [
-            "Article 1 - Produit endommagé",
-            "Contenu article 1",
-            "Article 2 - Produit non conforme",
-            "Contenu article 2",
-            "Article 3 - Retard livraison",
-            "Contenu article 3"
-        ]
-        """
-        # On découpe le texte en utilisant comme séparateurs les titres des articles, la section FAQ et les questions
-        # sections est la liste des morceaux de texte obtenus après le découpage
-        sections = re.split(
-            # rticle \d+ - .+
-            # Article → cherche le mot Article
-            # \d+ → cherche un ou plusieurs chiffres (1, 2, 3...)
-            # - .+ → récupère le titre après le tiret
-            r"(Article \d+ - .+|FAQ - .+|Q: .+)",
-            text
-        )
-
-        # Liste qui va contenir les documents
-        documents = []
-
-        for i in range(1, len(sections), 2):
-            # Récupère le titre de l'article
-            title = sections[i]
-            # Récupère le contenu qui suit le titre.
-            # Si aucun contenu n'existe après le titre, on met une chaîne vide.
-            content = sections[i + 1] if i + 1 < len(sections) else ""
-
-            # Si le titre commence par "FAQ -", ignore-le et passe directement au prochain élément.
-            if title.startswith("FAQ -"):
-                continue
-
-            # Création d'un Document LangChain contenant :
-            # - le titre + le contenu de l'article
-            # - la source pour retrouver l'origine du document
-            document = Document(
-                page_content=f"{title}\n{content}".strip(),
-                metadata={"source": title}
-            )
-
-            documents.append(document)
-
-        return documents
-    
-    documents = split_articles(full_text)
+    # Lire le PDF, extrait son texte et le découpe en petits morceaux
+    chunks = loader.load_and_split(text_splitter=splitter)
 
     # charger le modèle d'embedding
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
@@ -110,7 +61,7 @@ def get_retriever():
     # vector_store contient la base de données vectorielle
     vector_store = Chroma.from_documents(
         # donner les morceaux
-        documents=documents,
+        documents=chunks,
         # le modèle qui transforme le texte en vecteur
         embedding=embeddings,
         # crées une collection appelée cgv_faq
@@ -153,6 +104,6 @@ def search_relevant_rule(query_text: str) -> dict:
 
     return {
         "rule_text": best_doc.page_content,   # page_content contient le texte du chunk.      
-        "source": best_doc.metadata.get("source", "inconnu"),
+        "source": f"page {best_doc.metadata.get('page', '?')}",   # récupère la page d'origine
         "similarity_score": None,  # LangChain .invoke() ne renvoie pas le score par défaut
     }

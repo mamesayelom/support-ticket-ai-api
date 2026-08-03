@@ -16,7 +16,11 @@ from app.services.asr_service import transcribe_audio
 from app.core.config import TEMP_UPLOAD_DIR, ALLOWED_AUDIO_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS
 from app.services.vision_service import analyze_image
 
-# sert à créer un groupe de routes.
+from app.services.rag_service import search_relevant_rule
+from app.services.status_service import determine_ticket_status
+
+# APIRouter() est un objet qui permet de regrouper plusieurs routes (endpoints) de l'API.
+# router est une instance de cette classe qui va contenir toutes les routes de ce fichier.
 router = APIRouter()
 
 def save_temp_file(upload_file: UploadFile, allowed_extensions: set) -> str:
@@ -79,6 +83,10 @@ async def create_support_ticket(
 
     vision_diagnostic = None
 
+    rag_result = None
+
+    proposed_status = TicketStatus.A_VERIFIER
+
     try:
         # --- Traitement audio (ASR) ---
         #transformers s'appuie en interne sur un outil externe appelé ffmpeg — un logiciel de traitement audio/vidéo qui n'est pas une librairie Python, mais un programme système
@@ -100,16 +108,30 @@ async def create_support_ticket(
             vision_diagnostic = VisionDiagnostic(**vision_result)
 
 
-        # --- RAG seront branchés dans les prochaines étapes ---
+        # --- Recherche RAG ---
+        # On utilise la transcription audio si elle existe,
+        # sinon le texte fourni directement par le client.
+        query_text = (transcribed_text or text or "").strip()
+
+        if query_text and query_text != "string":
+            print("transcribed_text =", transcribed_text)
+            print("text =", repr(text))
+            rag_result = search_relevant_rule(query_text)
+
+        proposed_status = determine_ticket_status(
+            rag_result,
+            vision_diagnostic.model_dump() if vision_diagnostic else None,
+            query_text
+        )
 
         # Squelette temporaire — les services ASR/Vision/RAG seront branchés
         # dans les prochaines étapes.
         return SupportTicketResponse(
             transcribed_text=transcribed_text,
             vision_diagnostic=vision_diagnostic,
-            rag_result=None,
-            proposed_status=TicketStatus.A_VERIFIER,
-            message="Audio traité." if transcribed_text else "Aucun audio fourni.",
+            rag_result=rag_result,
+            proposed_status=proposed_status,
+            message="Ticket analysé avec succès."
         )
 
     finally:
