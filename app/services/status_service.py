@@ -1,10 +1,11 @@
 from app.models.schemas import TicketStatus
-
+from app.models.schemas import TicketStatus, RagResult, VisionDiagnostic
+from typing import Optional
 
 def determine_ticket_status(
-    rag_result: dict | None,
-    vision_result: dict | None,
-    text: str | None
+    rag_result: Optional[RagResult],
+    vision_result: Optional[VisionDiagnostic],
+    text: Optional[str]
 ) -> TicketStatus:
     """
     Détermine le statut proposé du ticket selon :
@@ -17,7 +18,7 @@ def determine_ticket_status(
         return TicketStatus.A_VERIFIER
 
 
-    rule = rag_result["source"].lower()
+    rule = rag_result.source.lower()
 
 
     # -------------------------------------------------
@@ -26,11 +27,20 @@ def determine_ticket_status(
     # -------------------------------------------------
     if "produit endommagé à la livraison" in rule:
 
-        # Une preuve image est recommandée
-        if vision_result:
+        # Pas de photo
+        if vision_result is None:
+            return TicketStatus.A_VERIFIER
+
+        # Le modèle voit un défaut
+        if vision_result["status"] == "defaut":
             return TicketStatus.REMBOURSABLE
 
-        return TicketStatus.A_VERIFIER
+        # Le modèle n'est pas sûr
+        if vision_result["status"] == "a_verifier":
+            return TicketStatus.A_VERIFIER
+
+        # Le modèle voit un produit conforme
+        return TicketStatus.REFUSE
 
 
 

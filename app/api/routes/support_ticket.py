@@ -6,18 +6,20 @@ from fastapi import APIRouter, UploadFile, File, Form
 #s on importe Optional depuis le module Python typing
 # Optional permet d'indiquer qu'une variable ou un paramètre peut avoir une valeur ou être vide (None)
 from typing import Optional
-from app.models.schemas import SupportTicketResponse, TicketStatus, VisionDiagnostic
+from app.models.schemas import SupportTicketResponse, TicketStatus, VisionDiagnostic, RagResult
 
 #importer pour communiquer avec le système
 import os
 # uuid sert à générer des identifiants uniques pour chaque fichier uploader sinon le deuxieme fichier ecrase le premier.
 import uuid
-from app.services.asr_service import transcribe_audio
-from app.core.config import TEMP_UPLOAD_DIR, ALLOWED_AUDIO_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS
-from app.services.vision_service import analyze_image
 
+from app.core.config import TEMP_UPLOAD_DIR, ALLOWED_AUDIO_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS
+
+from app.services.vision_service import analyze_image
+from app.services.asr_service import transcribe_audio
 from app.services.rag_service import search_relevant_rule
 from app.services.status_service import determine_ticket_status
+from app.services.generation_service import generate_answer
 
 # APIRouter() est un objet qui permet de regrouper plusieurs routes (endpoints) de l'API.
 # router est une instance de cette classe qui va contenir toutes les routes de ce fichier.
@@ -67,8 +69,11 @@ def validate_extension(filename: str, allowed_extensions: set) -> None:
 @router.post("", response_model=SupportTicketResponse)
 # FastAPI peut gérer plusieurs utilisateurs en même temps.
 async def create_support_ticket(
+    # l'image peut exister ou ne pas exister.
+    # File(None) indique que cette donnée vient d'un fichier envoyé dans le formulaire HTTP et est facultatif
     audio: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
+    # cette donnée vient d'un formulaire HTTP et est facultatif
     text: Optional[str] = Form(None),
 ):
     """
@@ -84,6 +89,8 @@ async def create_support_ticket(
     vision_diagnostic = None
 
     rag_result = None
+
+    generated_response = None
 
     proposed_status = TicketStatus.A_VERIFIER
 
@@ -114,13 +121,20 @@ async def create_support_ticket(
         query_text = (transcribed_text or text or "").strip()
 
         if query_text and query_text != "string":
-            print("transcribed_text =", transcribed_text)
-            print("text =", repr(text))
-            rag_result = search_relevant_rule(query_text)
+            rag_data = search_relevant_rule(query_text)
+            if rag_data is not None:
+                rag_result = RagResult(**rag_data)
+
+                # --- Génération ---
+                # On utilise rag_result.rule_text comme contexte pour le LLM
+                generated_response = generate_answer(
+                    question=query_text,
+                    context=rag_result.rule_text,
+                )
 
         proposed_status = determine_ticket_status(
             rag_result,
-            vision_diagnostic.model_dump() if vision_diagnostic else None,
+            vision_diagnostic,
             query_text
         )
 
@@ -130,6 +144,7 @@ async def create_support_ticket(
             transcribed_text=transcribed_text,
             vision_diagnostic=vision_diagnostic,
             rag_result=rag_result,
+            assistant_response= generated_response,
             proposed_status=proposed_status,
             message="Ticket analysé avec succès."
         )
