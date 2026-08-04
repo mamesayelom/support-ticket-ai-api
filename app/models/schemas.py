@@ -2,14 +2,17 @@ from pydantic import BaseModel
 from typing import Optional
 from enum import Enum
 
-# au lieu de laisser l'API renvoyer n'importe quelle chaîne de texte comme statut, on fige les valeurs possibles.
+# avec enum, la classe contient une liste fixe de valeurs possibles.
+# avec str, status = TicketStatus.REMBOURSABLE donne Remboursable
+# sans str, status = TicketStatus.REMBOURSABLE donne status = TicketStatus.REMBOURSABLE
+# on fait un héritage multiple, la classe devient à la fois une chaîne de caractères et une énumération
 class TicketStatus(str, Enum):
     """Statuts possibles proposés pour un ticket de réclamation."""
     REMBOURSABLE = "Remboursable"
     A_VERIFIER = "À vérifier"
     REFUSE = "Refusé"
 
-
+# Format de reponse
 class VisionDiagnostic(BaseModel):
     """Résultat de l'analyse d'image (si une image a été fournie)."""
     status: str
@@ -29,5 +32,6 @@ class SupportTicketResponse(BaseModel):
     transcribed_text: Optional[str] = None       # texte transcrit si audio fourni(un ticket peut arriver sans audio (donc transcribed_text = None) ou sans image (vision_diagnostic = None))
     vision_diagnostic: Optional[VisionDiagnostic] = None  # résultat image si image fournie
     rag_result: Optional[RagResult] = None        # règle interne trouvée
+    assistant_response: Optional[str] = None 
     proposed_status: TicketStatus                 # statut final proposé
     message: str                                  # résumé lisible pour l'agent support
