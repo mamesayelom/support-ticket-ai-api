@@ -101,10 +101,12 @@ def search_relevant_rule(query_text: str) -> dict:
     docs = retriever.invoke(query_text)
 
     best_doc = docs[0]  # k=1, donc un seul résultat
+    print(best_doc)
+    print(best_doc.metadata)
 
     return {
         "rule_text": best_doc.page_content,   # page_content contient le texte du chunk.      
-        "source": f"Page {best_doc.metadata['page'] + 1}",   # récupère la page d'origine
+        "source": best_doc.metadata.get("source", "Source inconnue"),   # récupère la page d'origine
         "similarity_score": None,  # LangChain .invoke() ne renvoie pas le score par défaut
     }
 

@@ -32,11 +32,11 @@ def determine_ticket_status(
             return TicketStatus.A_VERIFIER
 
         # Le modèle voit un défaut
-        if vision_result["status"] == "defaut":
+        if vision_result.status == "defaut":
             return TicketStatus.REMBOURSABLE
 
         # Le modèle n'est pas sûr
-        if vision_result["status"] == "a_verifier":
+        if vision_result.status == "a_verifier":
             return TicketStatus.A_VERIFIER
 
         # Le modèle voit un produit conforme
