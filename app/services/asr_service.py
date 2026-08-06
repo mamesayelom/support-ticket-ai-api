@@ -66,7 +66,11 @@ def transcribe_audio(file_path: str) -> str:
         # Timestamp signifie marqueur de temps.
         # Dans le contexte de Whisper (reconnaissance vocale), un timestamp indique à quel moment de l'audio une phrase ou un mot a été prononcé.
         # si l'audio est long, Whisper en a besoin pour faire la génération longue
-        return_timestamps=True
+        return_timestamps=True,
+        generate_kwargs={
+        "language": "fr",
+        "task": "transcribe"
+    }
     )
     # on retourne uniquement le texte transcrit par Whisper, en supprimant les espaces inutiles.
     return result["text"].strip()

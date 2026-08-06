@@ -8,6 +8,19 @@ app = FastAPI(
     description="API d'analyse automatique des réclamations clients (audio, image, texte) via ASR, Vision et RAG.",
 )
 
+from fastapi.middleware.cors import CORSMiddleware
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # On rattache le routeur des tickets support
 app.include_router(
     # Le router contient toutes les routes defini dans le fichier support_ticket
